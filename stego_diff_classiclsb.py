@@ -51,7 +51,7 @@ original_img = np.array(Image.open(original_path).convert('RGB'))
 stego_img = np.array(Image.open(stego_path).convert('RGB'))
 
 diff_img = np.abs(original_img.astype(np.int16) - stego_img.astype(np.int16)).astype(np.uint8)
-diff_amp = diff_img * 20
+diff_amp = diff_img * 200
 
 message = extract_message_lsb(np.array(Image.open("img/stego_sample.png")))
 print(f"🕵️ Messaggio estratto: '{message}'")
