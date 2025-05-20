@@ -15,7 +15,7 @@ learning_rate = 0.001
 
 train_data = np.load("stego_dataset_train.npz")
 X = train_data["X"]
-y= train_data["y"]
+y = train_data["y"]
 
 X_train_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 3, 1, 2)
 y_train_tensor = torch.tensor(y, dtype=torch.float32).unsqueeze(1)

@@ -1,19 +1,66 @@
+from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 from sklearn.utils import shuffle
 from faker import Faker
+from PIL import Image
 from tqdm import tqdm
 import numpy as np
 import torch
 import cv2
 import re
+import os
 
-transform = transforms.ToTensor()
-dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset))
-images, labels = next(iter(loader))
-images_np = (images.numpy() * 255).astype(np.uint8).transpose(0, 2, 3, 1)
+class BossbaseDataset(Dataset):
+    def __init__(self, root_dir, transform=None):
+        self.root_dir = root_dir
+        self.image_files = sorted([f for f in os.listdir(root_dir) if f.endswith(".pgm")])
+        self.transform = transform
 
-fake = Faker()
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.root_dir, self.image_files[idx])
+        try:
+            with Image.open(img_path) as img:
+                image = img.convert("RGB")
+        except Exception as e:
+            print(f"[SKIP] Errore aprendo {img_path}: {e}")
+            return None  # indica che è saltata
+
+        if self.transform:
+            image = self.transform(image)
+        return image
+
+def load_bossbase_numpy(root_dir, image_size=128, max_images=None):
+    files = sorted([f for f in os.listdir(root_dir) if f.endswith(".pgm")])
+    if max_images:
+        files = files[:max_images]
+
+    images = []
+    for fname in tqdm(files, desc="Loading BOSSBase images"):
+        path = os.path.join(root_dir, fname)
+        try:
+            img = Image.open(path).convert("RGB")
+            img = img.resize((image_size, image_size), Image.LANCZOS)
+            images.append(np.array(img))
+        except Exception as e:
+            print(f"[SKIP] Error opening {path}: {e}")
+
+    images_np = np.stack(images).astype(np.uint8)  # (N, H, W, 3)
+
+    # Converti in tensore PyTorch float normalizzato e permuta dimensioni in (N, 3, H, W)
+    images_tensor = torch.tensor(images_np / 255., dtype=torch.float32).permute(0, 3, 1, 2)
+
+    return images_tensor
+
+def load_cifar10_numpy(train=True, download=True, root='./data') -> 'np.ndarray':
+    transform = transforms.ToTensor()
+    dataset = datasets.CIFAR10(root=root, train=train, download=download, transform=transform)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=len(dataset))
+    images, _ = next(iter(loader))
+    images_np = (images.numpy() * 255).astype('uint8').transpose(0, 2, 3, 1)
+    return images_np
 
 def generate_random_sentence(max_length=3072):
     while True:
@@ -95,6 +142,15 @@ def hide_message_lsb(image: np.ndarray, message: str, rgb:bool) -> np.ndarray:
     
 
 def generate_stego_dataset(images):
+    # Se è torch.Tensor, convertilo in NumPy
+    if isinstance(images, torch.Tensor):
+        images = images.permute(0, 2, 3, 1).numpy()  # (N, 3, H, W) → (N, H, W, 3)
+
+    # Se ha shape (N, 3, H, W) in numpy (non torch), trasponi
+    if images.ndim == 4 and images.shape[1] == 3 and images.shape[-1] != 3:
+        images = images.transpose(0, 2, 3, 1)  # (N, 3, H, W) → (N, H, W, 3)
+
+    # Clip e converti a uint8
     images = np.clip(images * 255, 0, 255).astype(np.uint8)
     processed_images = []
     labels = []
@@ -127,9 +183,14 @@ def generate_stego_dataset(images):
 
     X = np.array(processed_images, dtype=np.float32) / 255.0
     y = np.array(labels)
-
+    if len(processed_images) != len(labels):
+     print(f"[ERRORE] Numero immagini ({len(processed_images)}) diverso da numero etichette ({len(labels)})")
     return X, y
 
+#http://dde.binghamton.edu/download/ImageDB/BOSSbase_1.01.zip
+#images_np = load_bossbase_numpy("./BOSSBase_1.01", image_size=128)
+images_np = load_cifar10_numpy()
+fake = Faker()
 X, y = generate_stego_dataset(images_np)
 X, y = shuffle(X, y, random_state=42)
 split_index = int(0.8 * len(X))
