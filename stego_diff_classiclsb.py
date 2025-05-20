@@ -14,7 +14,8 @@ def extract_message_lsb(image: np.ndarray) -> str:
     for i in range(0, len(bits), 8):
         byte = bits[i:i+8]
         char = chr(int(''.join(byte), 2))
-        if char == '\0':
+        if char == '.':
+            chars.append(char)
             break
         chars.append(char)
 
@@ -56,4 +57,4 @@ message = extract_message_lsb(np.array(Image.open("img/stego_sample.png")))
 print(f"🕵️ Messaggio estratto: '{message}'")
 
 plot_images(original_img, stego_img, diff_amp, save_path="img/diff_visualization_classiclsb.png")
-print("🖼️ Immagine salvata in comparison.png")
+print("🖼️ Immagine salvata in img/diff_visualization_classiclsb.png")

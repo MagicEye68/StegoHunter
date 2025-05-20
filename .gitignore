@@ -181,3 +181,4 @@ img/*
 *.pth
 *.txt
 *.npz
+.DS_Store

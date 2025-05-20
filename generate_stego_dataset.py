@@ -30,7 +30,6 @@ def clean_message(msg):
     return cleaned
 
 def classicLSB(message:str) -> str:
-    message += '\0'
     return ''.join(format(ord(char), '08b') for char in message)
 
 def myLSB(message:str):
@@ -58,8 +57,8 @@ def myLSB(message:str):
 
 def hide_message_lsb(image: np.ndarray, message: str) -> np.ndarray:
 
-    #binary = classicLSB(message)
-    binary = myLSB(message)
+    binary = classicLSB(message)
+    #binary = myLSB(message)
     image = image.copy()
     h, w, c = image.shape
 
