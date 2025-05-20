@@ -55,7 +55,7 @@ def myLSB(message:str):
             raise ValueError(f"Carattere non valido: '{char}'. Accettate solo lettere minuscole a-z e spazi.")
     return '0'.join(parts)+'000'
 
-def hide_message_lsb(image: np.ndarray, message: str) -> np.ndarray:
+def hide_message_lsb(image: np.ndarray, message: str, rgb:bool) -> np.ndarray:
 
     binary = classicLSB(message)
     #binary = myLSB(message)
@@ -64,21 +64,35 @@ def hide_message_lsb(image: np.ndarray, message: str) -> np.ndarray:
 
     if c < 3:
         raise ValueError("image_channel < 3")
+    if(rgb):
+        flat_image = image.reshape(-1, 3)
+        total_channels = flat_image.shape[0] * 3
 
-    flat_image = image.reshape(-1, 3)
-    total_channels = flat_image.shape[0] * 3
+        if len(binary) > total_channels:
+            raise ValueError("len(message) > channels")
 
-    if len(binary) > total_channels:
-        raise ValueError("len(message) > channels")
+        for i in range(len(binary)):
+            pixel_idx = i // 3
+            channel_idx = i % 3
+            flat_image[pixel_idx][channel_idx] &= 0xFE
+            flat_image[pixel_idx][channel_idx] |= int(binary[i]) #bitwise OR
 
-    for i in range(len(binary)):
-        pixel_idx = i // 3
-        channel_idx = i % 3
-        flat_image[pixel_idx][channel_idx] &= 0xFE
-        flat_image[pixel_idx][channel_idx] |= int(binary[i]) #bitwise OR
+        stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
+        return stego_image
+    else:
+        flat_image = image.reshape(-1, 3)
+        total_pixels = flat_image.shape[0]
 
-    stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
-    return stego_image
+        if len(binary) > total_pixels:
+            raise ValueError("len(message) > red channel capacity")
+
+        for i in range(len(binary)):
+            flat_image[i][2] &= 0xFE                # clear LSB of red channel
+            flat_image[i][2] |= int(binary[i])      # set new bit
+
+        stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
+        return stego_image
+    
 
 def generate_stego_dataset(images):
     images = np.clip(images * 255, 0, 255).astype(np.uint8)
@@ -86,6 +100,7 @@ def generate_stego_dataset(images):
     labels = []
     stessaFoto = []
     stessaFotoLabels = []
+    rgb=True #False = single channel stego
 
     for i, img in enumerate(tqdm(images, desc="Generazione dataset")):
         if i == 99:
@@ -93,7 +108,7 @@ def generate_stego_dataset(images):
             stessaFoto.append(img)
             stessaFotoLabels.append(0)
             MESSAGE = generate_random_sentence()
-            img = hide_message_lsb(img, message=MESSAGE)
+            img = hide_message_lsb(img, message=MESSAGE, rgb=rgb)
             cv2.imwrite("img/stego_sample.png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             stessaFoto.append(img)
             stessaFotoLabels.append(1)
@@ -103,7 +118,7 @@ def generate_stego_dataset(images):
 
         if i % 2 == 0:
             MESSAGE = generate_random_sentence()
-            img = hide_message_lsb(img, message=MESSAGE)
+            img = hide_message_lsb(img, message=MESSAGE, rgb=rgb)
             labels.append(1)
         else:
             labels.append(0)
