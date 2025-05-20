@@ -10,12 +10,11 @@ batch_size = 64
 weights_path = "best_model.pth"
 
 val_data = np.load("stego_dataset_val.npz")
-#val_data = np.load("stessaFoto.npz")
 X = val_data["X"]
 y = val_data["y"]
 
 X_val_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 3, 1, 2)
-y_val_tensor = torch.tensor(y, dtype=torch.float32).unsqueeze(1)
+y_val_tensor = torch.tensor(y, dtype=torch.long)  # int labels senza unsqueeze
 
 val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
@@ -24,7 +23,7 @@ model = StegoNet().to(device)
 model.load_state_dict(torch.load(weights_path, map_location=device))
 model.eval()
 
-criterion = nn.BCELoss()
+criterion = nn.CrossEntropyLoss()
 
 total_loss = 0.0
 correct = 0
@@ -35,11 +34,11 @@ all_labels = []
 with torch.no_grad():
     for inputs, labels in val_loader:
         inputs, labels = inputs.to(device), labels.to(device)
-        outputs = model(inputs)
+        outputs = model(inputs)  # shape (B, 5)
         loss = criterion(outputs, labels)
         total_loss += loss.item() * inputs.size(0)
 
-        predicted = (outputs > 0.5).float()
+        predicted = outputs.argmax(dim=1)
         correct += (predicted == labels).sum().item()
         total += labels.size(0)
 
@@ -48,21 +47,11 @@ with torch.no_grad():
 
 avg_loss = total_loss / total
 accuracy = correct / total
-precision = precision_score(all_labels, all_preds)
-recall = recall_score(all_labels, all_preds)
-f1 = f1_score(all_labels, all_preds)
+precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+recall = recall_score(all_labels, all_preds, average='macro', zero_division=0)
+f1 = f1_score(all_labels, all_preds, average='macro', zero_division=0)
 conf_matrix = confusion_matrix(all_labels, all_preds)
 
-#   CONFUSION MATRIX
-#   [TN FP]
-#   [FN TP]
-#
-#   TN: non stego classificati bene
-#   FP: non stego classificati stego
-#   FN: stego classificati come non stego
-#   TP: stego classificati bene
-
-# Risultati
 print(f"📊 Validazione completata:")
 print(f"   - Loss:     {avg_loss:.4f}")
 print(f"   - Accuracy: {accuracy:.4f} ({correct}/{total})")
