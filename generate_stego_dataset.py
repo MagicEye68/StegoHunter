@@ -102,7 +102,7 @@ def myLSB(message:str):
             raise ValueError(f"Carattere non valido: '{char}'. Accettate solo lettere minuscole a-z e spazi.")
     return '0'.join(parts)+'000'
 
-def hide_message_lsb(image: np.ndarray, message: str, rgb:bool) -> np.ndarray:
+def hide_message_lsb(image: np.ndarray, message: str, rgb:bool, channel: str = None) -> np.ndarray:
 
     binary = classicLSB(message)
     #binary = myLSB(message)
@@ -127,19 +127,25 @@ def hide_message_lsb(image: np.ndarray, message: str, rgb:bool) -> np.ndarray:
         stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
         return stego_image
     else:
+        # Mappa il canale scelto a un indice (r=0, g=1, b=2)
+        channel = channel.lower()
+        channel_map = {'r': 0, 'g': 1, 'b': 2}
+
+        ch_idx = channel_map[channel]
+
         flat_image = image.reshape(-1, 3)
         total_pixels = flat_image.shape[0]
 
         if len(binary) > total_pixels:
-            raise ValueError("len(message) > red channel capacity")
+            raise ValueError(f"len(message) > {channel} channel capacity")
 
         for i in range(len(binary)):
-            flat_image[i][2] &= 0xFE                # clear LSB of red channel
-            flat_image[i][2] |= int(binary[i])      # set new bit
+            flat_image[i][ch_idx] &= 0xFE          # clear LSB del canale scelto
+            flat_image[i][ch_idx] |= int(binary[i]) # set nuovo bit
 
         stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
         return stego_image
-    
+
 
 def generate_stego_dataset(images):
     # Se è torch.Tensor, convertilo in NumPy
@@ -156,7 +162,13 @@ def generate_stego_dataset(images):
     labels = []
     stessaFoto = []
     stessaFotoLabels = []
-    rgb=True #False = single channel stego
+
+    stego_methods = [
+        ('rgb', None),     # rgb=True, canale ignorato
+        ('single', 'r'),   # rgb=False, canale 'r'
+        ('single', 'g'),   # rgb=False, canale 'g'
+        ('single', 'b'),   # rgb=False, canale 'b'
+    ]
 
     for i, img in enumerate(tqdm(images, desc="Generazione dataset")):
         if i == 99:
@@ -164,7 +176,7 @@ def generate_stego_dataset(images):
             stessaFoto.append(img)
             stessaFotoLabels.append(0)
             MESSAGE = generate_random_sentence()
-            img = hide_message_lsb(img, message=MESSAGE, rgb=rgb)
+            img = hide_message_lsb(img, message=MESSAGE, rgb=True)
             cv2.imwrite("img/stego_sample.png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
             stessaFoto.append(img)
             stessaFotoLabels.append(1)
@@ -172,14 +184,24 @@ def generate_stego_dataset(images):
             YFotoUnica=np.array(stessaFotoLabels)
             np.savez_compressed("stessaFoto.npz", X=XFotoUnica, y=YFotoUnica)
 
-        if i % 2 == 0:
-            MESSAGE = generate_random_sentence()
-            img = hide_message_lsb(img, message=MESSAGE, rgb=rgb)
-            labels.append(1)
-        else:
-            labels.append(0)
+        label_type = i % 5
 
-        processed_images.append(img)
+        if label_type == 0:
+            # immagine pulita
+            labels.append(0)
+            processed_images.append(img)
+        else:
+            # stego, scegli la tecnica corrispondente a label_type-1
+            method, channel = stego_methods[label_type - 1]
+
+            MESSAGE = generate_random_sentence()
+            if method == 'rgb':
+                img_stego = hide_message_lsb(img, message=MESSAGE, rgb=True)
+            else:
+                img_stego = hide_message_lsb(img, message=MESSAGE, rgb=False, channel=channel)
+
+            labels.append(label_type)
+            processed_images.append(img_stego)
 
     X = np.array(processed_images, dtype=np.float32) / 255.0
     y = np.array(labels)
@@ -188,7 +210,7 @@ def generate_stego_dataset(images):
     return X, y
 
 #http://dde.binghamton.edu/download/ImageDB/BOSSbase_1.01.zip
-#images_np = load_bossbase_numpy("./BOSSBase_1.01", image_size=128)
+#images_np = load_bossbase_numpy("./BOSSbase_1.01", image_size=128)
 images_np = load_cifar10_numpy()
 fake = Faker()
 X, y = generate_stego_dataset(images_np)
