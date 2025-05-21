@@ -64,7 +64,7 @@ def load_cifar10_numpy(train=True, download=True, root='./data') -> 'np.ndarray'
 
 def generate_random_sentence(max_length=3072):
     while True:
-        sentence = fake.sentence(nb_words=5)
+        sentence = fake.sentence(nb_words=60)
         cleaned = clean_message(sentence)
         encoded = myLSB(cleaned)
         if len(encoded) <= max_length:
@@ -210,8 +210,8 @@ def generate_stego_dataset(images):
     return X, y
 
 #http://dde.binghamton.edu/download/ImageDB/BOSSbase_1.01.zip
-#images_np = load_bossbase_numpy("./BOSSbase_1.01", image_size=128)
-images_np = load_cifar10_numpy()
+images_np = load_bossbase_numpy("./BOSSbase_1.01", image_size=128)
+#images_np = load_cifar10_numpy()
 fake = Faker()
 X, y = generate_stego_dataset(images_np)
 X, y = shuffle(X, y, random_state=42)

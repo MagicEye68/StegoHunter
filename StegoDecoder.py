@@ -8,7 +8,7 @@ from model import StegoNet
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 weights_path = "best_model.pth"
 val_dataset_path = "stego_dataset_val.npz"
-saved_images_dir = "val_images_by_label"
+saved_images_dir = "img/val_images_by_label"
 
 # Funzioni di estrazione messaggio (uguali a prima)
 def extract_message_lsb(image: np.ndarray) -> str:

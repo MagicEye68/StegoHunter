@@ -178,7 +178,7 @@ cython_debug/
 data/
 img/*
 !img/.gitkeep
-*.pth
+last_model.pth
 *.txt
 *.npz
 .DS_Store

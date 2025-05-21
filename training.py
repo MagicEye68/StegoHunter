@@ -11,7 +11,7 @@ from model import StegoNet
 # Configurazione device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Iperparametri
-num_epochs = 10
+num_epochs = 5
 batch_size = 64
 learning_rate = 0.001
 weight_decay = 1e-4
