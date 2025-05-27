@@ -9,6 +9,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from collections import Counter
 import os
+from torchsummary import summary
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 batch_size = 64
@@ -33,6 +34,7 @@ val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 model = StegoNet().to(device)
 model.load_state_dict(torch.load(weights_path, map_location=device))
 model.eval()
+summary(model, input_size=(3, X.shape[1], X.shape[2]))
 
 criterion = nn.CrossEntropyLoss()
 
