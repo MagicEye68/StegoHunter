@@ -3,6 +3,7 @@ import torch.optim as optim
 import torch.nn as nn
 import numpy as np
 import torch
+import os
 
 
 import matplotlib.pyplot as plt
@@ -11,16 +12,17 @@ from model import StegoNet
 # Configurazione device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # Iperparametri
-num_epochs = 5
+num_epochs = 7
 batch_size = 64
-learning_rate = 0.001
-weight_decay = 1e-4
+learning_rate = 0.0005
+weight_decay = 0.0001
 patience = 10
 
 # Caricamento dataset
 train_data = np.load("stego_dataset_train.npz")
 X = train_data["X"]  # shape (N, H, W, C)
 y = train_data["y"]  # shape (N,)
+print("Shape di X:", X.shape)
 
 # Conversione in Tensor e permuta canali
 X_train_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 3, 1, 2)  # (N, C, H, W)
@@ -28,10 +30,13 @@ y_train_tensor = torch.tensor(y, dtype=torch.long)  # etichette multiclasse
 
 # Creazione DataLoader
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True)
 
 # Inizializzazione modello, loss e optimizer
 model = StegoNet().to(device)
+if os.path.exists("best_model.pth"):
+    model.load_state_dict(torch.load("best_model.pth"))
+    print("Modello caricato da best_model.pth")
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 

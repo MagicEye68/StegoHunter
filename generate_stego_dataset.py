@@ -5,6 +5,7 @@ from faker import Faker
 from PIL import Image
 from tqdm import tqdm
 import numpy as np
+import random
 import torch
 import cv2
 import re
@@ -62,11 +63,20 @@ def load_cifar10_numpy(train=True, download=True, root='./data') -> 'np.ndarray'
     images_np = (images.numpy() * 255).astype('uint8').transpose(0, 2, 3, 1)
     return images_np
 
+def dataset_to_numpy(dataset):
+    imgs = []
+    for img, _ in dataset:
+        # img è Tensor (C,H,W), lo riportiamo a numpy H,W,C float [0,1]
+        img_np = img.permute(1, 2, 0).numpy()
+        imgs.append(img_np)
+    return np.array(imgs)
+
 def generate_random_sentence(max_length=3072):
     while True:
-        sentence = fake.sentence(nb_words=60)
+        nb_words = random.randint(40, 60)
+        sentence = fake.sentence(nb_words)
         cleaned = clean_message(sentence)
-        encoded = myLSB(cleaned)
+        encoded = classicLSB(cleaned)
         if len(encoded) <= max_length:
             return cleaned
 
@@ -75,6 +85,9 @@ def clean_message(msg):
     allowed = re.compile(r"[a-z ,.?!)]+")
     cleaned = ''.join(ch for ch in msg if allowed.match(ch))
     return cleaned
+
+def int_to_bin(value: int, bit_length: int) -> str:
+    return format(value, f'0{bit_length}b')
 
 def classicLSB(message:str) -> str:
     return ''.join(format(ord(char), '08b') for char in message)
@@ -102,116 +115,313 @@ def myLSB(message:str):
             raise ValueError(f"Carattere non valido: '{char}'. Accettate solo lettere minuscole a-z e spazi.")
     return '0'.join(parts)+'000'
 
-def hide_message_lsb(image: np.ndarray, message: str, rgb:bool, channel: str = None) -> np.ndarray:
-
-    binary = classicLSB(message)
-    #binary = myLSB(message)
+def hide_message_lsb(image: np.ndarray, message: str, rgb: bool, channel: str = None, seed: int = None) -> np.ndarray:
     image = image.copy()
     h, w, c = image.shape
-
     if c < 3:
-        raise ValueError("image_channel < 3")
-    if(rgb):
-        flat_image = image.reshape(-1, 3)
-        total_channels = flat_image.shape[0] * 3
+        raise ValueError("Image must have 3 channels (RGB)")
 
-        if len(binary) > total_channels:
-            raise ValueError("len(message) > channels")
+    flat_image = image.reshape(-1, 3)
+    num_pixels = flat_image.shape[0]
 
-        for i in range(len(binary)):
+    if seed is None:
+        seed = random.randint(0, 65535)
+
+    # Convert seed to 16-bit binary
+    seed_bin = int_to_bin(seed, 16)
+    message_bin = classicLSB(message)
+    full_bin = seed_bin + message_bin
+    message_len = len(full_bin)
+
+    if rgb:
+        total_channels = num_pixels * 3
+        if message_len > total_channels:
+            raise ValueError("Message + seed too long for image (RGB mode)")
+
+        # Pseudocasual order (escludendo prime 16 posizioni riservate al seed)
+        indices = list(range(16, total_channels))
+        random.seed(seed)
+        random.shuffle(indices)
+
+        # Embed seed in prime 16 LSB sequenziali
+        for i in range(16):
             pixel_idx = i // 3
             channel_idx = i % 3
             flat_image[pixel_idx][channel_idx] &= 0xFE
-            flat_image[pixel_idx][channel_idx] |= int(binary[i]) #bitwise OR
+            flat_image[pixel_idx][channel_idx] |= int(seed_bin[i])
 
-        stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
-        return stego_image
+        # Embed message bits pseudocasuali
+        for i in range(len(message_bin)):
+            idx = indices[i]
+            pixel_idx = idx // 3
+            channel_idx = idx % 3
+            flat_image[pixel_idx][channel_idx] &= 0xFE
+            flat_image[pixel_idx][channel_idx] |= int(message_bin[i])
+
     else:
-        # Mappa il canale scelto a un indice (r=0, g=1, b=2)
         channel = channel.lower()
         channel_map = {'r': 0, 'g': 1, 'b': 2}
-
+        if channel not in channel_map:
+            raise ValueError("Invalid channel. Use 'r', 'g', or 'b'.")
         ch_idx = channel_map[channel]
 
-        flat_image = image.reshape(-1, 3)
-        total_pixels = flat_image.shape[0]
+        if message_len > num_pixels:
+            raise ValueError("Message + seed too long for selected channel")
 
-        if len(binary) > total_pixels:
-            raise ValueError(f"len(message) > {channel} channel capacity")
+        indices = list(range(16, num_pixels))
+        random.seed(seed)
+        random.shuffle(indices)
 
-        for i in range(len(binary)):
-            flat_image[i][ch_idx] &= 0xFE          # clear LSB del canale scelto
-            flat_image[i][ch_idx] |= int(binary[i]) # set nuovo bit
+        # Embed seed nelle prime 16 posizioni del canale selezionato
+        for i in range(16):
+            flat_image[i][ch_idx] &= 0xFE
+            flat_image[i][ch_idx] |= int(seed_bin[i])
 
-        stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
-        return stego_image
+        # Embed message bits pseudocasuali
+        for i in range(len(message_bin)):
+            pixel_idx = indices[i]
+            flat_image[pixel_idx][ch_idx] &= 0xFE
+            flat_image[pixel_idx][ch_idx] |= int(message_bin[i])
 
+    stego_image = flat_image.reshape((h, w, 3)).astype(np.uint8)
+    return stego_image
+
+
+def hide_message_lsb_sequential(image: np.ndarray, message: str, rgb: bool, channel: str = None) -> np.ndarray:
+    image = image.copy()
+    h, w, c = image.shape
+    if c < 3:
+        raise ValueError("L'immagine deve avere 3 canali (RGB)")
+
+    # Converti il messaggio in binario
+    message_bin = ''.join(format(ord(char), '08b') for char in message)
+    message_len = len(message_bin)
+
+    if rgb:
+        total_capacity = h * w * 3
+        if message_len > total_capacity:
+            raise ValueError("Messaggio troppo lungo per l'immagine (modalità RGB)")
+
+        # Divido il messaggio in 3 parti uguali (per R, G, B)
+        part_len = (message_len + 2) // 3  # arrotondamento per eccesso
+        part_r = message_bin[:part_len]
+        part_g = message_bin[part_len:2*part_len]
+        part_b = message_bin[2*part_len:]
+
+        # Funzione per inserire i bit in una sezione di righe per un canale
+        def embed_bits_in_rows(start_row, end_row, channel_idx, bits):
+            idx = 0
+            for row in range(start_row, end_row):
+                for col in range(w):
+                    if idx >= len(bits):
+                        return
+                    pixel = image[row, col]
+                    pixel[channel_idx] = (pixel[channel_idx] & 0xFE) | int(bits[idx])
+                    image[row, col] = pixel
+                    idx += 1
+
+        # Divido l'immagine in tre sezioni orizzontali uguali (per canale)
+        section_height = h // 3
+        embed_bits_in_rows(0, section_height, 0, part_r)           # rosso
+        embed_bits_in_rows(section_height, 2*section_height, 1, part_g)  # verde
+        embed_bits_in_rows(2*section_height, h, 2, part_b)         # blu
+
+    else:
+        # Modalità single channel (r, g, b)
+        channel = channel.lower()
+        channel_map = {'r': 0, 'g': 1, 'b': 2}
+        if channel not in channel_map:
+            raise ValueError("Canale non valido. Usa 'r', 'g' o 'b'.")
+        ch_idx = channel_map[channel]
+
+        # Decido la riga di partenza in base al canale (come per RGB)
+        start_row = {'r': 0, 'g': h // 3, 'b': 2 * h // 3}[channel]
+
+        available_pixels = (h - start_row) * w
+        if message_len > available_pixels:
+            raise ValueError("Messaggio troppo lungo per il canale selezionato")
+
+        idx = 0
+        for row in range(start_row, h):
+            for col in range(w):
+                if idx >= message_len:
+                    return image
+                pixel = image[row, col]
+                pixel[ch_idx] = (pixel[ch_idx] & 0xFE) | int(message_bin[idx])
+                image[row, col] = pixel
+                idx += 1
+
+    return image
+
+def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: bool, channel: str = None) -> np.ndarray:
+    image = image.copy()
+    h, w, c = image.shape
+    if c < 3:
+        raise ValueError("L'immagine deve avere 3 canali (RGB)")
+
+    flat_image = image.reshape(-1, 3)
+    num_pixels = flat_image.shape[0]
+
+    # Converti il messaggio in stringa binaria
+    message_bin = ''.join(format(ord(char), '08b') for char in message)
+    message_len = len(message_bin)
+
+    if rgb:
+        total_capacity = h * w * 3
+        if message_len > total_capacity:
+            raise ValueError("Messaggio troppo lungo per l'immagine (modalità RGB verticale)")
+
+        # Divide in tre parti uguali
+        part_len = message_len // 3 + (1 if message_len % 3 > 0 else 0)
+        part_r = message_bin[:part_len]
+        part_g = message_bin[part_len:2 * part_len]
+        part_b = message_bin[2 * part_len:]
+
+        section_w = w // 3
+
+        def embed_bits_vertical(section_start, section_end, channel_idx, bits):
+            idx = 0
+            for col in range(section_start, section_end):
+                for row in range(h):
+                    if idx >= len(bits):
+                        return
+                    pixel = image[row, col]
+                    pixel[channel_idx] = (pixel[channel_idx] & 0xFE) | int(bits[idx])
+                    image[row, col] = pixel
+                    idx += 1
+
+        # Rosso - primo terzo
+        embed_bits_vertical(0, section_w, 0, part_r)
+        # Verde - secondo terzo
+        embed_bits_vertical(section_w, 2 * section_w, 1, part_g)
+        # Blu - terzo terzo
+        embed_bits_vertical(2 * section_w, w, 2, part_b)
+    else:
+        channel = channel.lower()
+        channel_map = {'r': 0, 'g': 1, 'b': 2}
+        if channel not in channel_map:
+            raise ValueError("Canale non valido. Usa 'r', 'g' o 'b'.")
+        ch_idx = channel_map[channel]
+
+        # Determina la colonna di partenza
+        if channel == 'r':
+            start_col = 0
+        elif channel == 'g':
+            start_col = w // 3
+        else:  # 'b'
+            start_col = (2 * w) // 3
+
+        available_pixels = (w - start_col) * h
+        if message_len > available_pixels:
+            raise ValueError("Messaggio troppo lungo per il canale selezionato (verticale)")
+
+        idx = 0
+        for col in range(start_col, w):
+            for row in range(h):
+                if idx >= message_len:
+                    break
+                pixel = image[row, col]
+                pixel[ch_idx] = (pixel[ch_idx] & 0xFE) | int(message_bin[idx])
+                image[row, col] = pixel
+                idx += 1
+
+    return image
 
 def generate_stego_dataset(images):
-    # Se è torch.Tensor, convertilo in NumPy
+    # Conversioni formato immagini
     if isinstance(images, torch.Tensor):
-        images = images.permute(0, 2, 3, 1).numpy()  # (N, 3, H, W) → (N, H, W, 3)
-
-    # Se ha shape (N, 3, H, W) in numpy (non torch), trasponi
+        images = images.permute(0, 2, 3, 1).numpy()
     if images.ndim == 4 and images.shape[1] == 3 and images.shape[-1] != 3:
-        images = images.transpose(0, 2, 3, 1)  # (N, 3, H, W) → (N, H, W, 3)
-
-    # Clip e converti a uint8
+        images = images.transpose(0, 2, 3, 1)
     images = np.clip(images * 255, 0, 255).astype(np.uint8)
+
     processed_images = []
     labels = []
     stessaFoto = []
     stessaFotoLabels = []
 
     stego_methods = [
-        ('rgb', None),     # rgb=True, canale ignorato
-        ('single', 'r'),   # rgb=False, canale 'r'
-        ('single', 'g'),   # rgb=False, canale 'g'
-        ('single', 'b'),   # rgb=False, canale 'b'
+        ('rgb', None),
+        ('single', 'r'),
+        ('single', 'g'),
+        ('single', 'b'),
+        ('rgb_vertical', None),
+        ('single_vertical', 'r'),
+        ('single_vertical', 'g'),
+        ('single_vertical', 'b'),
     ]
 
     for i, img in enumerate(tqdm(images, desc="Generazione dataset")):
+        # Resize casuale tra 128 e 256
+        new_size = random.randint(128, 256)
+        img_resized = cv2.resize(img, (new_size, new_size), interpolation=cv2.INTER_LINEAR)
         if i == 99:
-            cv2.imwrite("img/clean_sample.png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-            stessaFoto.append(img)
+            cv2.imwrite("img/clean_sample.png", cv2.cvtColor(img_resized, cv2.COLOR_RGB2BGR))
+            stessaFoto.append(img_resized)
             stessaFotoLabels.append(0)
+
             MESSAGE = generate_random_sentence()
-            img = hide_message_lsb(img, message=MESSAGE, rgb=True)
-            cv2.imwrite("img/stego_sample.png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-            stessaFoto.append(img)
+            img_stego = hide_message_lsb_sequential(img_resized, message=MESSAGE, rgb=True)
+
+            cv2.imwrite("img/stego_sample.png", cv2.cvtColor(img_stego, cv2.COLOR_RGB2BGR))
+            stessaFoto.append(img_stego)
             stessaFotoLabels.append(1)
-            XFotoUnica=np.array(stessaFoto, dtype=np.float32) / 255.0
-            YFotoUnica=np.array(stessaFotoLabels)
+
+            XFotoUnica = np.array(stessaFoto, dtype=np.float32) / 255.0
+            YFotoUnica = np.array(stessaFotoLabels)
             np.savez_compressed("stessaFoto.npz", X=XFotoUnica, y=YFotoUnica)
 
-        label_type = i % 5
+        label_type = i % 9
 
         if label_type == 0:
-            # immagine pulita
             labels.append(0)
             processed_images.append(img)
         else:
-            # stego, scegli la tecnica corrispondente a label_type-1
             method, channel = stego_methods[label_type - 1]
 
             MESSAGE = generate_random_sentence()
             if method == 'rgb':
                 img_stego = hide_message_lsb(img, message=MESSAGE, rgb=True)
-            else:
+            elif method == 'single':
                 img_stego = hide_message_lsb(img, message=MESSAGE, rgb=False, channel=channel)
+            elif method == 'rgb_vertical':
+             img_stego = hide_message_lsb_sequential_vertical(img, message=MESSAGE, rgb=True)
+            elif method == 'single_vertical':
+                img_stego = hide_message_lsb_sequential_vertical(img, message=MESSAGE, rgb=False, channel=channel)
+            else:
+                raise ValueError(f"Metodo stego sconosciuto: {method}")
 
             labels.append(label_type)
             processed_images.append(img_stego)
 
     X = np.array(processed_images, dtype=np.float32) / 255.0
     y = np.array(labels)
+
     if len(processed_images) != len(labels):
-     print(f"[ERRORE] Numero immagini ({len(processed_images)}) diverso da numero etichette ({len(labels)})")
+        print(f"[ERRORE] Numero immagini ({len(processed_images)}) diverso da numero etichette ({len(labels)})")
+
     return X, y
 
+transform_stl10 = transforms.Compose([
+    transforms.Resize((96, 96)),
+    transforms.ToTensor()
+])
+
 #http://dde.binghamton.edu/download/ImageDB/BOSSbase_1.01.zip
-images_np = load_bossbase_numpy("./BOSSbase_1.01", image_size=128)
+images_boss = load_bossbase_numpy("./BOSSbase_1.01", image_size=96)
 #images_np = load_cifar10_numpy()
+stl10_train = datasets.STL10(root="./data", split="train", download=True, transform=transform_stl10)
+stl10_test = datasets.STL10(root="./data", split="test", download=True, transform=transform_stl10)
+images_stl_train = dataset_to_numpy(stl10_train)
+images_stl_test = dataset_to_numpy(stl10_test)
+images_stl = np.concatenate((images_stl_train, images_stl_test), axis=0).transpose(0, 3, 1, 2)
+num_to_keep = len(images_stl)
+indices = np.random.choice(len(images_stl), num_to_keep, replace=False)
+images_stl_subset = images_stl[indices]
+images_np = np.concatenate((images_boss.numpy(), images_stl), axis=0)
+images_np = np.concatenate((images_boss, images_stl_subset), axis=0)
+images_np=shuffle(images_np, random_state=42)
+print(f"Dimensione dataset finale: {images_np.shape}")
 fake = Faker()
 X, y = generate_stego_dataset(images_np)
 X, y = shuffle(X, y, random_state=42)
@@ -226,8 +436,8 @@ np.savez_compressed("stego_dataset_val.npz", X=X_val, y=y_val)
 
 print("Numero totale immagini:", len(y))
 print("Immagini non stego Training:", (y_train == 0).sum())
-print("Immagini stego Training:", (y_train == 1).sum())
+print("Immagini stego Training:", (y_train != 0).sum())
 print("Immagini non stego Val:", (y_val == 0).sum())
-print("Immagini stego Val:", (y_val == 1).sum())
+print("Immagini stego Val:", (y_val != 0).sum())
 print("Dataset training salvato come 'stego_dataset_train.npz'")
 print("Dataset validation salvato come 'stego_dataset_val.npz'")

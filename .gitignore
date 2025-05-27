@@ -182,3 +182,4 @@ last_model.pth
 *.txt
 *.npz
 .DS_Store
+output_stego/*
