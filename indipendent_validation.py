@@ -119,21 +119,26 @@ plt.close()
 print("✅ Report salvato come 'validation_report.png'")
 
 # -----------------------------
-# ROC Curve (binary: clean vs stego)
+# ROC Curve (binary: clean vs stego) — VERSIONE CORRETTA
 # -----------------------------
+from sklearn.preprocessing import label_binarize
+
+# Etichetta binaria: 0 = clean, 1 = stego
+# Calcola ROC usando le probabilità, non le classi
 binary_labels = [0 if lbl == 0 else 1 for lbl in all_labels]
-binary_preds = [0 if pred == 0 else 1 for pred in all_preds]
-fpr, tpr, thresholds = roc_curve(binary_labels, binary_preds)
+binary_probs = [1 - prob[0] for prob in all_probs]  # prob di essere "stego"
+fpr, tpr, thresholds = roc_curve(binary_labels, binary_probs)
 roc_auc = auc(fpr, tpr)
 
+# Plot
 plt.figure(figsize=(8, 6))
-plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {roc_auc:.2f})')
-plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (AUC = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Classificatore random')
 plt.xlim([0.0, 1.0])
 plt.ylim([0.0, 1.05])
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('Binary ROC Curve (Clean vs. Stego)')
+plt.title('Curva ROC Binaria (Clean vs. Stego)')
 plt.legend(loc='lower right')
 plt.savefig('img/roc_auc.png', bbox_inches='tight', dpi=300)
 plt.close()
