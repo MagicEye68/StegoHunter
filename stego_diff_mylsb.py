@@ -2,6 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
+#-------------------------------------------------
+# OUTDATED : pls use stego_diff_classiclsb.py
+#-------------------------------------------------
 def extract_message_lsb(image: np.ndarray) -> str:
     flat_image = image.reshape(-1, 3)
     bits = []
