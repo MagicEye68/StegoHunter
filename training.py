@@ -4,35 +4,29 @@ import torch.nn as nn
 import numpy as np
 import torch
 import os
-
-
 import matplotlib.pyplot as plt
 from model import StegoNet
 
-# Configurazione device
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# Iperparametri
+
 num_epochs = 7
 batch_size = 64
 learning_rate = 0.0005
 weight_decay = 0.0001
 patience = 10
 
-# Caricamento dataset
 train_data = np.load("stego_dataset_train.npz")
-X = train_data["X"]  # shape (N, H, W, C)
-y = train_data["y"]  # shape (N,)
+X = train_data["X"]
+y = train_data["y"]
 print("Shape di X:", X.shape)
 
-# Conversione in Tensor e permuta canali
-X_train_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 3, 1, 2)  # (N, C, H, W)
-y_train_tensor = torch.tensor(y, dtype=torch.long)  # etichette multiclasse
+X_train_tensor = torch.tensor(X, dtype=torch.float32).permute(0, 3, 1, 2)
+y_train_tensor = torch.tensor(y, dtype=torch.long)
 
-# Creazione DataLoader
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True)
 
-# Inizializzazione modello, loss e optimizer
 model = StegoNet().to(device)
 if os.path.exists("best_model.pth"):
     model.load_state_dict(torch.load("best_model.pth"))
@@ -46,7 +40,6 @@ patience_counter = 0
 train_losses = []
 train_accuracies = []
 
-# Loop di training
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -57,7 +50,7 @@ for epoch in range(num_epochs):
         inputs, labels = inputs.to(device), labels.to(device)
 
         optimizer.zero_grad()
-        outputs = model(inputs)  # logits shape (batch_size, 5)
+        outputs = model(inputs)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -72,7 +65,6 @@ for epoch in range(num_epochs):
     train_losses.append(epoch_loss)
     train_accuracies.append(epoch_acc)
 
-    # Salvataggio del modello migliore
     if epoch_loss < best_train_loss:
             best_train_loss = epoch_loss
             patience_counter = 0
@@ -85,7 +77,6 @@ for epoch in range(num_epochs):
             print(f"Early stopping dopo {epoch+1} epoche con loss migliore: {best_train_loss:.4f}")
             break
 
-# Fine training
 print("Training completato.")
 torch.save(model.state_dict(), 'last_model.pth')
 print("Modello finale salvato in last_model.pth")

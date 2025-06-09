@@ -29,7 +29,6 @@ class AugmentedTensorDataset(torch.utils.data.Dataset):
         return x, y
 
 
-# ======= Config =======
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 num_epochs = 50
 batch_size = 64
@@ -37,7 +36,6 @@ learning_rate = 0.0005
 weight_decay = 0.0001
 patience = 10
 
-# ======= Caricamento dataset =======
 train_data = np.load("stego_dataset_train.npz")
 X_train = torch.tensor(train_data["X"], dtype=torch.float32).permute(0, 3, 1, 2)
 y_train = torch.tensor(train_data["y"], dtype=torch.long)
@@ -60,7 +58,6 @@ val_dataset = AugmentedTensorDataset(X_val, y_val, transform=val_transform)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
-# ======= Modello =======
 model = StegoNet().to(device)
 if os.path.exists("best_model.pth"):
     model.load_state_dict(torch.load("best_model.pth"))
@@ -71,7 +68,6 @@ optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight
 scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
 
 
-# ======= Training loop =======
 best_val_loss = float("inf")
 patience_counter = 0
 
@@ -79,7 +75,6 @@ train_losses, val_losses = [], []
 train_accuracies, val_accuracies = [], []
 
 for epoch in range(num_epochs):
-    # ---- Train ----
     model.train()
     train_loss, train_correct = 0.0, 0
     for inputs, labels in train_loader:
@@ -98,7 +93,6 @@ for epoch in range(num_epochs):
     train_losses.append(epoch_train_loss)
     train_accuracies.append(epoch_train_acc)
 
-    # ---- Validation ----
     model.eval()
     val_loss, val_correct = 0.0, 0
     all_preds, all_labels = [], []
@@ -139,11 +133,8 @@ for epoch in range(num_epochs):
             print(f"Early stopping dopo {epoch+1} epoche (val loss migliore: {best_val_loss:.4f})")
             break
 
-# ======= Save finale =======
-#torch.save(model.state_dict(), "last_model.pth")
 print("Training completato. Modello migliore salvato in best_model.pth")
 
-# ======= Plot =======
 os.makedirs("img", exist_ok=True)
 plt.figure(figsize=(12,5))
 
