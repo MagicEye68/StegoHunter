@@ -23,9 +23,12 @@ def bits_to_message(bits: list) -> str:
         byte = bits[i:i+8]
         if len(byte) < 8:
             break
-        char = chr(int(''.join(byte), 2))
+        char_code = int(''.join(byte), 2)
+        if char_code < 32 or char_code > 126:
+            break
+        char = chr(char_code)
         chars.append(char)
-        if char == '.':  # terminatore messaggio
+        if char == '.':
             break
     return ''.join(chars)
 
@@ -38,14 +41,11 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
     num_pixels = flat_image.shape[0]
 
     if label == 0:
-        # CLEAN image, niente messaggio
         return ""
 
     if label == 1:
-        # RGB pseudocasuale: seed + messaggio distribuiti sui 3 canali
         total_channels = num_pixels * 3
 
-        # Estrai seed dai primi 16 bit sequenziali (3 canali)
         seed_bits = []
         for i in range(16):
             pixel_idx = i // 3
@@ -54,12 +54,10 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
             seed_bits.append(str(bit))
         seed = bin_to_int(''.join(seed_bits))
 
-        # Ricostruisci sequenza shuffle
         indices = list(range(16, total_channels))
         random.seed(seed)
         random.shuffle(indices)
 
-        # Estrai messaggio seguendo indices (LSB)
         message_bits = []
         for idx in indices:
             pixel_idx = idx // 3
@@ -69,24 +67,20 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
 
         return bits_to_message(message_bits)
 
-    # Per i canali singoli (2 = R, 3 = G, 4 = B)
     channel_map = {2: 0, 3: 1, 4: 2}
     if label in channel_map:
         ch_idx = channel_map[label]
 
-        # Estrai seed primi 16 bit sequenziali solo sul canale scelto
         seed_bits = []
         for i in range(16):
             bit = flat_image[i][ch_idx] & 1
             seed_bits.append(str(bit))
         seed = bin_to_int(''.join(seed_bits))
 
-        # Ricostruisci sequenza shuffle su pixel (non canali)
         indices = list(range(16, num_pixels))
         random.seed(seed)
         random.shuffle(indices)
 
-        # Estrai messaggio seguendo sequenza shuffle, sul canale scelto
         message_bits = []
         for pixel_idx in indices:
             bit = flat_image[pixel_idx][ch_idx] & 1
@@ -94,18 +88,65 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
 
         return bits_to_message(message_bits)
 
-    # Label non riconosciuto
+    if label in [5, 6, 7, 8]:
+        h, w, c = image.shape
+        if c < 3:
+            raise ValueError("Image must have 3 channels (RGB)")
+
+        bits = []
+
+        if label == 5:
+            section_w = w // 3
+            remainder = w % 3
+            total_bits = h * w * 3
+            max_len = h * section_w
+
+            def extract_vertical_bits_limited(section_start, section_end, channel_idx, max_bits):
+                bits = []
+                for col in range(section_start, section_end):
+                    for row in range(h):
+                        if len(bits) >= max_bits:
+                            return bits
+                        pixel = image[row, col]
+                        bits.append(str(pixel[channel_idx] & 1))
+                return bits
+
+            part_len = max_len
+            part_r = extract_vertical_bits_limited(0, section_w, 0, part_len)
+            part_g = extract_vertical_bits_limited(section_w, 2 * section_w, 1, part_len)
+            part_b = extract_vertical_bits_limited(2 * section_w, w, 2, len(image) * 3 - 2 * part_len)
+
+            message_bits = part_r + part_g + part_b
+
+            return bits_to_message(message_bits)
+
+
+        else:
+            channel_map = {6: ('r', 0), 7: ('g', 1), 8: ('b', 2)}
+            channel_name, ch_idx = channel_map[label]
+
+            if channel_name == 'r':
+                start_col = 0
+            elif channel_name == 'g':
+                start_col = w // 3
+            else:
+                start_col = (2 * w) // 3
+
+            for col in range(start_col, w):
+                for row in range(h):
+                    pixel = image[row, col]
+                    bits.append(str(pixel[ch_idx] & 1))
+
+        return bits_to_message(bits)
+
     return "[ERROR] Label non riconosciuto"
 
-# Crea la cartella se non esiste
 os.makedirs(saved_images_dir, exist_ok=True)
 
-# Carica validation dataset
 val_data = np.load(val_dataset_path)
-X_val = val_data["X"]  # shape (N, H, W, 3)
-y_val = val_data["y"]  # shape (N,)
+X_val = val_data["X"]
+y_val = val_data["y"]
 
-# Salva un'immagine per ogni label
 saved_labels = set()
 for i, label in enumerate(y_val):
     if label not in saved_labels:
@@ -117,7 +158,6 @@ for i, label in enumerate(y_val):
     if len(saved_labels) == 9:
         break
 
-# Setup modello e trasformazione input
 model = StegoNet()
 model.load_state_dict(torch.load(weights_path, map_location=device))
 model.to(device)
@@ -127,7 +167,6 @@ transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-# Per ogni immagine salvata: carica, predici, estrai messaggio
 for label in range(9):
     img_path = os.path.join(saved_images_dir, f"label_{label}.png")
     if not os.path.isfile(img_path):
