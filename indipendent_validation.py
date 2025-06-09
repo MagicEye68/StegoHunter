@@ -19,7 +19,6 @@ val_data = np.load("stego_dataset_val.npz")
 X = val_data["X"]
 y = val_data["y"]
 
-# Conta le occorrenze per label
 label_counts = Counter(y)
 print("Numero di elementi per label:")
 for label, count in label_counts.items():
@@ -72,9 +71,6 @@ class_names = ['clean', 'rgbH', 'rH', 'gH', 'bH', 'rgbV', 'rV', 'gV', 'bV']
 
 os.makedirs('img/errors', exist_ok=True)
 
-# -----------------------------
-# Grafico principale (summary)
-# -----------------------------
 errors_per_class = conf_matrix.sum(axis=1) - np.diag(conf_matrix)
 
 plt.figure(figsize=(16, 12))
@@ -116,21 +112,13 @@ plt.tight_layout()
 plt.suptitle('Validation Report Summary', fontsize=16, fontweight='bold', y=1.02)
 plt.savefig('img/validation_report.png', bbox_inches='tight', dpi=300)
 plt.close()
-print("✅ Report salvato come 'validation_report.png'")
+print("Report salvato come 'validation_report.png'")
 
-# -----------------------------
-# ROC Curve (binary: clean vs stego) — VERSIONE CORRETTA
-# -----------------------------
-from sklearn.preprocessing import label_binarize
-
-# Etichetta binaria: 0 = clean, 1 = stego
-# Calcola ROC usando le probabilità, non le classi
 binary_labels = [0 if lbl == 0 else 1 for lbl in all_labels]
-binary_probs = [1 - prob[0] for prob in all_probs]  # prob di essere "stego"
+binary_probs = [1 - prob[0] for prob in all_probs]
 fpr, tpr, thresholds = roc_curve(binary_labels, binary_probs)
 roc_auc = auc(fpr, tpr)
 
-# Plot
 plt.figure(figsize=(8, 6))
 plt.plot(fpr, tpr, color='darkorange', lw=2, label=f'Curva ROC (AUC = {roc_auc:.2f})')
 plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', label='Classificatore random')
@@ -142,11 +130,8 @@ plt.title('Curva ROC Binaria (Clean vs. Stego)')
 plt.legend(loc='lower right')
 plt.savefig('img/roc_auc.png', bbox_inches='tight', dpi=300)
 plt.close()
-print("✅ ROC curve salvata come 'roc_auc.png'")
+print("ROC curve salvata come 'roc_auc.png'")
 
-# -----------------------------
-# Metrics per class
-# -----------------------------
 report = classification_report(all_labels, all_preds, target_names=class_names, output_dict=True)
 df_report = pd.DataFrame(report).transpose()
 metrics_per_class = df_report.loc[class_names, ['precision', 'recall', 'f1-score']]
@@ -158,19 +143,15 @@ plt.xticks(rotation=45)
 plt.tight_layout()
 plt.savefig('img/metrics_per_class.png', bbox_inches='tight', dpi=300)
 plt.close()
-print("✅ Metrics per class salvata come 'metrics_per_class.png'")
+print("Metrics per class salvata come 'metrics_per_class.png'")
 
-# -----------------------------
-# Error analysis: immagini più sbagliate
-# -----------------------------
 errors = []
 for idx, (true_lbl, pred_lbl, prob) in enumerate(zip(all_labels, all_preds, all_probs)):
     if true_lbl != pred_lbl:
         confidence = max(prob)
         errors.append((idx, true_lbl, pred_lbl, confidence))
 
-# Ordina per confidenza (più alto = più sicuro ma sbagliato)
-errors_sorted = sorted(errors, key=lambda x: -x[3])[:10]  # top 10
+errors_sorted = sorted(errors, key=lambda x: -x[3])[:10]
 
 for i, (idx, true_lbl, pred_lbl, conf) in enumerate(errors_sorted):
     img = X[idx]
@@ -180,12 +161,9 @@ for i, (idx, true_lbl, pred_lbl, conf) in enumerate(errors_sorted):
     plt.savefig(f'img/errors/error_{i+1}.png', bbox_inches='tight', dpi=150)
     plt.close()
 
-print(f"✅ Salvate {len(errors_sorted)} immagini sbagliate più confidenti in 'img/errors/'")
+print(f"Salvate {len(errors_sorted)} immagini sbagliate più confidenti in 'img/errors/'")
 
-# -----------------------------
-# Summary stampato
-# -----------------------------
-print(f"📊 Validazione completata:")
+print(f"Validazione completata:")
 print(f"   - Loss:     {avg_loss:.4f}")
 print(f"   - Accuracy: {accuracy:.4f} ({correct}/{total})")
 print(f"   - Precision:{precision:.4f}")
