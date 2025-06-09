@@ -1,4 +1,4 @@
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 from sklearn.utils import shuffle
 from faker import Faker
@@ -27,7 +27,7 @@ class BossbaseDataset(Dataset):
                 image = img.convert("RGB")
         except Exception as e:
             print(f"[SKIP] Errore aprendo {img_path}: {e}")
-            return None  # indica che è saltata
+            return None
 
         if self.transform:
             image = self.transform(image)
@@ -48,9 +48,8 @@ def load_bossbase_numpy(root_dir, image_size=128, max_images=None):
         except Exception as e:
             print(f"[SKIP] Error opening {path}: {e}")
 
-    images_np = np.stack(images).astype(np.uint8)  # (N, H, W, 3)
+    images_np = np.stack(images).astype(np.uint8)
 
-    # Converti in tensore PyTorch float normalizzato e permuta dimensioni in (N, 3, H, W)
     images_tensor = torch.tensor(images_np / 255., dtype=torch.float32).permute(0, 3, 1, 2)
 
     return images_tensor
@@ -66,7 +65,6 @@ def load_cifar10_numpy(train=True, download=True, root='./data') -> 'np.ndarray'
 def dataset_to_numpy(dataset):
     imgs = []
     for img, _ in dataset:
-        # img è Tensor (C,H,W), lo riportiamo a numpy H,W,C float [0,1]
         img_np = img.permute(1, 2, 0).numpy()
         imgs.append(img_np)
     return np.array(imgs)
@@ -127,7 +125,6 @@ def hide_message_lsb(image: np.ndarray, message: str, rgb: bool, channel: str = 
     if seed is None:
         seed = random.randint(0, 65535)
 
-    # Convert seed to 16-bit binary
     seed_bin = int_to_bin(seed, 16)
     message_bin = classicLSB(message)
     full_bin = seed_bin + message_bin
@@ -138,19 +135,16 @@ def hide_message_lsb(image: np.ndarray, message: str, rgb: bool, channel: str = 
         if message_len > total_channels:
             raise ValueError("Message + seed too long for image (RGB mode)")
 
-        # Pseudocasual order (escludendo prime 16 posizioni riservate al seed)
         indices = list(range(16, total_channels))
         random.seed(seed)
         random.shuffle(indices)
 
-        # Embed seed in prime 16 LSB sequenziali
         for i in range(16):
             pixel_idx = i // 3
             channel_idx = i % 3
             flat_image[pixel_idx][channel_idx] &= 0xFE
             flat_image[pixel_idx][channel_idx] |= int(seed_bin[i])
 
-        # Embed message bits pseudocasuali
         for i in range(len(message_bin)):
             idx = indices[i]
             pixel_idx = idx // 3
@@ -172,12 +166,10 @@ def hide_message_lsb(image: np.ndarray, message: str, rgb: bool, channel: str = 
         random.seed(seed)
         random.shuffle(indices)
 
-        # Embed seed nelle prime 16 posizioni del canale selezionato
         for i in range(16):
             flat_image[i][ch_idx] &= 0xFE
             flat_image[i][ch_idx] |= int(seed_bin[i])
 
-        # Embed message bits pseudocasuali
         for i in range(len(message_bin)):
             pixel_idx = indices[i]
             flat_image[pixel_idx][ch_idx] &= 0xFE
@@ -193,7 +185,6 @@ def hide_message_lsb_sequential(image: np.ndarray, message: str, rgb: bool, chan
     if c < 3:
         raise ValueError("L'immagine deve avere 3 canali (RGB)")
 
-    # Converti il messaggio in binario
     message_bin = ''.join(format(ord(char), '08b') for char in message)
     message_len = len(message_bin)
 
@@ -202,13 +193,11 @@ def hide_message_lsb_sequential(image: np.ndarray, message: str, rgb: bool, chan
         if message_len > total_capacity:
             raise ValueError("Messaggio troppo lungo per l'immagine (modalità RGB)")
 
-        # Divido il messaggio in 3 parti uguali (per R, G, B)
-        part_len = (message_len + 2) // 3  # arrotondamento per eccesso
+        part_len = (message_len + 2) // 3
         part_r = message_bin[:part_len]
         part_g = message_bin[part_len:2*part_len]
         part_b = message_bin[2*part_len:]
 
-        # Funzione per inserire i bit in una sezione di righe per un canale
         def embed_bits_in_rows(start_row, end_row, channel_idx, bits):
             idx = 0
             for row in range(start_row, end_row):
@@ -220,21 +209,18 @@ def hide_message_lsb_sequential(image: np.ndarray, message: str, rgb: bool, chan
                     image[row, col] = pixel
                     idx += 1
 
-        # Divido l'immagine in tre sezioni orizzontali uguali (per canale)
         section_height = h // 3
-        embed_bits_in_rows(0, section_height, 0, part_r)           # rosso
-        embed_bits_in_rows(section_height, 2*section_height, 1, part_g)  # verde
-        embed_bits_in_rows(2*section_height, h, 2, part_b)         # blu
+        embed_bits_in_rows(0, section_height, 0, part_r)
+        embed_bits_in_rows(section_height, 2*section_height, 1, part_g)
+        embed_bits_in_rows(2*section_height, h, 2, part_b
 
     else:
-        # Modalità single channel (r, g, b)
         channel = channel.lower()
         channel_map = {'r': 0, 'g': 1, 'b': 2}
         if channel not in channel_map:
             raise ValueError("Canale non valido. Usa 'r', 'g' o 'b'.")
         ch_idx = channel_map[channel]
 
-        # Decido la riga di partenza in base al canale (come per RGB)
         start_row = {'r': 0, 'g': h // 3, 'b': 2 * h // 3}[channel]
 
         available_pixels = (h - start_row) * w
@@ -261,8 +247,6 @@ def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: b
 
     flat_image = image.reshape(-1, 3)
     num_pixels = flat_image.shape[0]
-
-    # Converti il messaggio in stringa binaria
     message_bin = ''.join(format(ord(char), '08b') for char in message)
     message_len = len(message_bin)
 
@@ -271,7 +255,6 @@ def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: b
         if message_len > total_capacity:
             raise ValueError("Messaggio troppo lungo per l'immagine (modalità RGB verticale)")
 
-        # Divide in tre parti uguali
         part_len = message_len // 3 + (1 if message_len % 3 > 0 else 0)
         part_r = message_bin[:part_len]
         part_g = message_bin[part_len:2 * part_len]
@@ -290,11 +273,8 @@ def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: b
                     image[row, col] = pixel
                     idx += 1
 
-        # Rosso - primo terzo
         embed_bits_vertical(0, section_w, 0, part_r)
-        # Verde - secondo terzo
         embed_bits_vertical(section_w, 2 * section_w, 1, part_g)
-        # Blu - terzo terzo
         embed_bits_vertical(2 * section_w, w, 2, part_b)
     else:
         channel = channel.lower()
@@ -303,12 +283,11 @@ def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: b
             raise ValueError("Canale non valido. Usa 'r', 'g' o 'b'.")
         ch_idx = channel_map[channel]
 
-        # Determina la colonna di partenza
         if channel == 'r':
             start_col = 0
         elif channel == 'g':
             start_col = w // 3
-        else:  # 'b'
+        else:
             start_col = (2 * w) // 3
 
         available_pixels = (w - start_col) * h
@@ -328,7 +307,6 @@ def hide_message_lsb_sequential_vertical(image: np.ndarray, message: str, rgb: b
     return image
 
 def generate_stego_dataset(images):
-    # Conversioni formato immagini
     if isinstance(images, torch.Tensor):
         images = images.permute(0, 2, 3, 1).numpy()
     if images.ndim == 4 and images.shape[1] == 3 and images.shape[-1] != 3:
@@ -352,7 +330,6 @@ def generate_stego_dataset(images):
     ]
 
     for i, img in enumerate(tqdm(images, desc="Generazione dataset")):
-        # Resize casuale tra 128 e 256
         new_size = random.randint(128, 256)
         img_resized = cv2.resize(img, (new_size, new_size), interpolation=cv2.INTER_LINEAR)
         if i == 99:
