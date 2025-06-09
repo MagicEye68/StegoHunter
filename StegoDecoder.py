@@ -5,14 +5,13 @@ import torch
 from torchvision import transforms
 from model import StegoNet
 import random
+import numpy as np
+import random
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 weights_path = "best_model.pth"
 val_dataset_path = "stego_dataset_val.npz"
 saved_images_dir = "img/val_images_by_label"
-
-import numpy as np
-import random
 
 def bin_to_int(bits: str) -> int:
     return int(bits, 2)
