@@ -3,13 +3,11 @@ import numpy as np
 import sys
 
 def count_lsb_all_channels(image_path):
-    # Carica l'immagine in formato RGB
     img = cv2.imread(image_path)
     if img is None:
         print(f"Errore: impossibile caricare l'immagine '{image_path}'")
         return
 
-    # Converti da BGR a RGB
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     channel_names = ['Rosso', 'Verde', 'Blu']
@@ -20,7 +18,7 @@ def count_lsb_all_channels(image_path):
 
     for i in range(3):
         channel = img[:, :, i]
-        lsb_mask = channel & 1  # Isola il LSB
+        lsb_mask = channel & 1
         lsb_ones = np.sum(lsb_mask)
         lsb_zeros = total_pixels - lsb_ones
 
