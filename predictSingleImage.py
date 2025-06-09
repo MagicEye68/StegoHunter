@@ -89,11 +89,6 @@ def predict_and_extract(image_path, model, device, transform):
 
     img_np = np.array(img_pil)
 
-    message = extract_message_from_image(img_np, predicted_label)
-    if predicted_label == 0:
-        print("Immagine CLEAN, nessun messaggio nascosto.")
-    else:
-        print(f"Messaggio estratto: {message}")
 
 def main():
     image_path = "img/dianaStego.png"
