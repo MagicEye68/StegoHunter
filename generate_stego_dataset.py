@@ -212,7 +212,7 @@ def hide_message_lsb_sequential(image: np.ndarray, message: str, rgb: bool, chan
         section_height = h // 3
         embed_bits_in_rows(0, section_height, 0, part_r)
         embed_bits_in_rows(section_height, 2*section_height, 1, part_g)
-        embed_bits_in_rows(2*section_height, h, 2, part_b
+        embed_bits_in_rows(2*section_height, h, 2, part_b)
 
     else:
         channel = channel.lower()
