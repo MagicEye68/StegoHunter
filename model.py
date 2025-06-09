@@ -9,18 +9,13 @@ class PreprocessLSBLayer(nn.Module):
 
     def forward(self, x):
         x_uint8 = (x * 255).to(torch.uint8)
-        #lsb_r = x_uint8[:, 0, :, :] & 1
-        #lsb_g = x_uint8[:, 1, :, :] & 1
-        #lsb_b = x_uint8[:, 2, :, :] & 1
-        #lsb = lsb_r + lsb_g + lsb_b
-        #return lsb.unsqueeze(1).float() / 3.0
         h = x.shape[2]
         top_h = int(h * self.top_fraction)
         x_top = x_uint8[:, :, :top_h, :]
-        lsb_r = (x_top[:, 0, :, :] & 1).unsqueeze(1)  # (B,1,H,W)
-        lsb_g = (x_top[:, 1, :, :] & 1).unsqueeze(1)  # (B,1,H,W)
-        lsb_b = (x_top[:, 2, :, :] & 1).unsqueeze(1)  # (B,1,H,W)
-        lsb = torch.cat([lsb_r, lsb_g, lsb_b], dim=1)   # (B,3,H,W)
+        lsb_r = (x_top[:, 0, :, :] & 1).unsqueeze(1)
+        lsb_g = (x_top[:, 1, :, :] & 1).unsqueeze(1)
+        lsb_b = (x_top[:, 2, :, :] & 1).unsqueeze(1)
+        lsb = torch.cat([lsb_r, lsb_g, lsb_b], dim=1)
         return lsb.float()
 
 
@@ -28,7 +23,7 @@ class StegoNet(nn.Module):
     def __init__(self, num_classes=9):
         super(StegoNet, self).__init__()
         self.preprocess = PreprocessLSBLayer()
-        
+
         self.conv1 = nn.Conv2d(3, 36, kernel_size=(1,5), padding=(0,2))
         self.bn1 = nn.BatchNorm2d(36)
 
@@ -37,13 +32,13 @@ class StegoNet(nn.Module):
 
         self.conv2 = nn.Conv2d(48, 48, kernel_size=3, padding=1)
         self.bn2 = nn.BatchNorm2d(48)
-        
+
         self.conv3 = nn.Conv2d(48, 96, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(96)
-        
+
         self.pool = nn.MaxPool2d(2, 2)
         self.adaptive_pool = nn.AdaptiveAvgPool2d((1, 1))
-        
+
         self.fc1 = nn.Linear(96, 128)
         self.dropout = nn.Dropout(0.3)
         self.fc2 = nn.Linear(128, num_classes)
