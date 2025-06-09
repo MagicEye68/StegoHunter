@@ -6,8 +6,6 @@ import torch
 from torchvision import transforms
 from model import StegoNet
 
-# --- Funzioni di supporto (bin_to_int, bits_to_message, extract_message_from_image) ---
-
 def bin_to_int(bits: str) -> int:
     return int(bits, 2)
 
@@ -19,7 +17,7 @@ def bits_to_message(bits: list) -> str:
             break
         char = chr(int(''.join(byte), 2))
         chars.append(char)
-        if char == '.':  # terminatore messaggio
+        if char == '.':
             break
     return ''.join(chars)
 
@@ -32,7 +30,6 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
     num_pixels = flat_image.shape[0]
 
     if label == 0:
-        # CLEAN image, niente messaggio
         return ""
 
     if label == 1:
@@ -74,7 +71,6 @@ def extract_message_from_image(image: np.ndarray, label: int) -> str:
 
     return "[ERROR] Label non riconosciuto"
 
-# --- Funzione principale di predizione ed estrazione ---
 
 def predict_and_extract(image_path, model, device, transform):
     if not os.path.isfile(image_path):
